@@ -1,0 +1,6 @@
+/server
+/worker
+/coverage.out
+*.log
+.idea/
+.vscode/
