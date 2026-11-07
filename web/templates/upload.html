@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GophProfile — загрузка аватара</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#f4f6fb;color:#182033}main{max-width:620px;margin:60px auto;padding:32px;background:white;border-radius:18px;box-shadow:0 12px 40px #18203318}h1{margin-top:0}label{display:block;margin:18px 0 7px;font-weight:600}input{display:block;width:100%;padding:12px;border:1px solid #c7cede;border-radius:8px}.drop{padding:28px;text-align:center;border:2px dashed #9aa8c3;border-radius:12px}.drop.over{border-color:#5167e8;background:#eef1ff}button,a.button{display:inline-block;margin-top:20px;padding:12px 20px;border:0;border-radius:8px;background:#5167e8;color:white;font-weight:600;text-decoration:none;cursor:pointer}button:disabled{opacity:.6}progress{display:none;width:100%;margin-top:18px}#preview{display:block;max-width:220px;max-height:220px;margin:18px auto;border-radius:12px}.error{color:#b42318}.muted{color:#667085;font-size:.9rem}
+  </style>
+</head>
+<body><main>
+  <h1>GophProfile</h1><p>Загрузите аватар в формате JPEG, PNG или WebP. Максимальный размер — 10 МБ.</p>
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  <form id="upload-form" method="post" action="/web/upload" enctype="multipart/form-data">
+    <label for="user_id">User ID или email</label><input id="user_id" name="user_id" value="{{.UserID}}" maxlength="255" required>
+    <label for="file">Изображение</label>
+    <div class="drop" id="drop"><input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp" required><span class="muted">Можно перетащить файл сюда</span></div>
+    <img id="preview" alt="Предпросмотр" hidden>
+    <progress id="progress" max="100" value="0"></progress><p id="message" class="error"></p>
+    <button id="submit" type="submit">Загрузить</button>
+  </form>
+</main><script>
+const form=document.getElementById('upload-form'),input=document.getElementById('file'),preview=document.getElementById('preview'),drop=document.getElementById('drop');
+input.addEventListener('change',()=>{if(input.files[0]){preview.src=URL.createObjectURL(input.files[0]);preview.hidden=false}});
+['dragenter','dragover'].forEach(e=>drop.addEventListener(e,e=>{e.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,e=>{e.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop',e=>{input.files=e.dataTransfer.files;input.dispatchEvent(new Event('change'))});
+form.addEventListener('submit',e=>{if(!window.XMLHttpRequest)return;e.preventDefault();const user=document.getElementById('user_id').value.trim(),message=document.getElementById('message');if(!input.files[0]){message.textContent='Выберите файл';return}const request=new XMLHttpRequest(),progress=document.getElementById('progress');request.open('POST','/api/v1/avatars');request.setRequestHeader('X-User-ID',user);request.upload.onprogress=e=>{if(e.lengthComputable){progress.style.display='block';progress.value=e.loaded/e.total*100}};request.onload=()=>{if(request.status===201){location.href='/web/gallery/'+encodeURIComponent(user)}else{try{message.textContent=JSON.parse(request.responseText).error}catch(_){message.textContent='Ошибка загрузки'}document.getElementById('submit').disabled=false}};request.onerror=()=>{message.textContent='Сервис недоступен';document.getElementById('submit').disabled=false};document.getElementById('submit').disabled=true;message.textContent='';const data=new FormData();data.append('file',input.files[0]);request.send(data)});
+</script></body></html>
