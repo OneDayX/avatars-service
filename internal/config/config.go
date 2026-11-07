@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	HTTPAddr          string
+	MetricsAddr       string
 	DatabaseURL       string
 	MigrationsDir     string
 	WebDir            string
@@ -34,6 +35,7 @@ type Config struct {
 func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:          env("HTTP_ADDR", ":8080"),
+		MetricsAddr:       env("METRICS_ADDR", ":8081"),
 		DatabaseURL:       env("DATABASE_URL", "postgres://gophprofile:gophprofile@localhost:5432/gophprofile?sslmode=disable"),
 		MigrationsDir:     env("MIGRATIONS_DIR", "migrations"),
 		WebDir:            env("WEB_DIR", "web"),

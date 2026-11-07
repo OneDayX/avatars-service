@@ -13,6 +13,11 @@ const (
 	ProcessingFailed     = "failed"
 )
 
+type UserStorageUsage struct {
+	UserID string
+	Bytes  int64
+}
+
 type Dimensions struct {
 	Width  int `json:"width"`
 	Height int `json:"height"`

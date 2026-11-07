@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/example/gophprofile/internal/broker/rabbitmq"
 	"github.com/example/gophprofile/internal/config"
@@ -15,6 +18,8 @@ import (
 	miniostorage "github.com/example/gophprofile/internal/storage/minio"
 	"github.com/example/gophprofile/internal/worker"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -58,7 +63,22 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer func() { _ = broker.Close() }()
+	prometheus.MustRegister(
+		observability.NewStorageUsageCollector(repo),
+		observability.NewInfrastructureCollector(pool, broker),
+	)
+	metricsServer := &http.Server{Addr: cfg.MetricsAddr, Handler: promhttp.Handler(), ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.ErrorContext(ctx, "metrics server stopped", "error", err)
+		}
+	}()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		defer cancel()
+		_ = metricsServer.Shutdown(shutdownCtx)
+	}()
 	avatarWorker := worker.New(repo, storage, broker, cfg.WorkerMaxRetries, cfg.WorkerRetryDelay, logger.With("component", "worker"))
-	logger.Info("worker started")
+	logger.Info("worker started", "metrics_address", cfg.MetricsAddr)
 	return avatarWorker.Run(ctx)
 }

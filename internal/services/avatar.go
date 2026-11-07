@@ -12,6 +12,7 @@ import (
 	"github.com/example/gophprofile/internal/broker"
 	"github.com/example/gophprofile/internal/domain"
 	"github.com/example/gophprofile/internal/images"
+	"github.com/example/gophprofile/internal/metrics"
 	"github.com/example/gophprofile/internal/repository"
 	"github.com/example/gophprofile/internal/storage"
 	"github.com/google/uuid"
@@ -40,12 +41,17 @@ func validateUserID(userID string) (string, error) {
 }
 
 func (s *AvatarService) Upload(ctx context.Context, userID, fileName string, data []byte) (result *domain.Avatar, err error) {
+	started := time.Now()
+	status := "success"
 	ctx, span := otel.Tracer("gophprofile/avatars").Start(ctx, "avatar.upload")
 	defer func() {
 		if err != nil {
+			status = "error"
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		}
+		metrics.UploadsTotal.WithLabelValues(status).Inc()
+		metrics.UploadDuration.WithLabelValues(status).Observe(time.Since(started).Seconds())
 		span.End()
 	}()
 	span.SetAttributes(attribute.String("user_id", userID), attribute.String("file_name", fileName), attribute.Int("file_size", len(data)))

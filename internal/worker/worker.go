@@ -11,6 +11,7 @@ import (
 	"github.com/example/gophprofile/internal/broker"
 	"github.com/example/gophprofile/internal/domain"
 	"github.com/example/gophprofile/internal/images"
+	"github.com/example/gophprofile/internal/metrics"
 	"github.com/example/gophprofile/internal/repository"
 	"github.com/example/gophprofile/internal/storage"
 	"github.com/google/uuid"
@@ -57,7 +58,13 @@ func (w *Worker) Run(ctx context.Context) error {
 	}
 }
 
-func (w *Worker) handleDelivery(ctx context.Context, delivery broker.Delivery) error {
+func (w *Worker) handleDelivery(ctx context.Context, delivery broker.Delivery) (err error) {
+	started := time.Now()
+	status := "success"
+	defer func() {
+		metrics.WorkerEvents.WithLabelValues(string(delivery.Event.Type), status).Inc()
+		metrics.WorkerDuration.WithLabelValues(string(delivery.Event.Type), status).Observe(time.Since(started).Seconds())
+	}()
 	deliveryContext := delivery.Context
 	if deliveryContext == nil {
 		deliveryContext = ctx
@@ -67,15 +74,17 @@ func (w *Worker) handleDelivery(ctx context.Context, delivery broker.Delivery) e
 		trace.WithAttributes(attribute.String("messaging.operation.type", "process"), attribute.String("messaging.rabbitmq.destination.routing_key", string(delivery.Event.Type))),
 	)
 	defer span.End()
-	err := w.processWithRetry(eventContext, delivery.Event)
+	err = w.processWithRetry(eventContext, delivery.Event)
 	if err == nil {
-		if err := delivery.Ack(); err != nil {
+		if err = delivery.Ack(); err != nil {
+			status = "error"
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			return err
 		}
 		return nil
 	}
+	status = "error"
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
 	w.logger.ErrorContext(eventContext, "event processing failed", "type", delivery.Event.Type, "error", err)

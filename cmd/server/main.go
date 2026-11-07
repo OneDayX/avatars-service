@@ -21,6 +21,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -70,6 +72,10 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer func() { _ = broker.Close() }()
+	prometheus.MustRegister(
+		observability.NewStorageUsageCollector(repo),
+		observability.NewInfrastructureCollector(pool, broker),
+	)
 	service := services.NewAvatarService(repo, storage, broker, cfg.MaxFileSize)
 	httpLogger := logger.With("component", "http")
 	avatarHandler := handlers.NewAvatarHandler(service, cfg.MaxFileSize, httpLogger)
@@ -80,7 +86,8 @@ func run(logger *slog.Logger) error {
 	}
 	limiter := handlers.NewRateLimiter(cfg.RateLimitRequests, cfg.RateLimitWindow)
 	router := chi.NewRouter()
-	router.Use(observability.HTTPTracing("gophprofile"), middleware.RequestID, middleware.RealIP, middleware.Recoverer, middleware.Timeout(30*time.Second), handlers.CORS(cfg.AllowedOrigins))
+	router.Use(observability.HTTPTracing("gophprofile"), observability.HTTPMetrics(httpLogger), middleware.RequestID, middleware.RealIP, middleware.Recoverer, middleware.Timeout(30*time.Second), handlers.CORS(cfg.AllowedOrigins))
+	router.Get("/metrics", promhttp.Handler().ServeHTTP)
 	router.Get("/health", healthHandler.Check)
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/web/upload", http.StatusSeeOther) })
 	router.Route("/api/v1", func(r chi.Router) {

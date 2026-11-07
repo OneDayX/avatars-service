@@ -158,6 +158,22 @@ func decodeDelivery(ctx context.Context, message amqp.Delivery) (broker.Delivery
 	}, nil
 }
 
+func (b *Broker) QueueDepth(ctx context.Context) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	channel, err := b.connection.Channel()
+	if err != nil {
+		return 0, fmt.Errorf("open queue inspection channel: %w", err)
+	}
+	defer func() { _ = channel.Close() }()
+	queue, err := channel.QueueDeclarePassive(queueName, true, false, false, false, nil)
+	if err != nil {
+		return 0, fmt.Errorf("inspect queue: %w", err)
+	}
+	return queue.Messages, nil
+}
+
 func (b *Broker) Ping(ctx context.Context) error {
 	if b.connection.IsClosed() {
 		return fmt.Errorf("connection is closed")
