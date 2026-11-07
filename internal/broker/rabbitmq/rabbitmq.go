@@ -10,6 +10,10 @@ import (
 	"github.com/example/gophprofile/internal/domain"
 	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -64,18 +68,32 @@ func (b *Broker) PublishDelete(ctx context.Context, event domain.AvatarDeleteEve
 }
 
 func (b *Broker) publish(ctx context.Context, eventType broker.EventType, event any) error {
+	ctx, span := otel.Tracer("gophprofile/rabbitmq").Start(ctx, "rabbitmq.publish "+string(eventType),
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(attribute.String("messaging.destination.name", exchangeName), attribute.String("messaging.rabbitmq.destination.routing_key", string(eventType))),
+	)
+	defer span.End()
 	body, err := json.Marshal(event)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("marshal event: %w", err)
 	}
+	messageID := uuid.NewString()
+	headers := amqp.Table{}
+	otel.GetTextMapPropagator().Inject(ctx, headersCarrier(headers))
+	span.SetAttributes(attribute.String("messaging.message.id", messageID))
 	err = b.channel.PublishWithContext(ctx, exchangeName, string(eventType), false, false, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
-		MessageId:    uuid.NewString(),
+		MessageId:    messageID,
 		Timestamp:    time.Now().UTC(),
+		Headers:      headers,
 		Body:         body,
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("publish %s: %w", eventType, err)
 	}
 	return nil
@@ -100,7 +118,7 @@ func (b *Broker) Consume(ctx context.Context) (<-chan broker.Delivery, error) {
 				if !ok {
 					return
 				}
-				delivery, err := decodeDelivery(message)
+				delivery, err := decodeDelivery(ctx, message)
 				if err != nil {
 					_ = message.Nack(false, false)
 					continue
@@ -117,7 +135,8 @@ func (b *Broker) Consume(ctx context.Context) (<-chan broker.Delivery, error) {
 	return deliveries, nil
 }
 
-func decodeDelivery(message amqp.Delivery) (broker.Delivery, error) {
+func decodeDelivery(ctx context.Context, message amqp.Delivery) (broker.Delivery, error) {
+	ctx = otel.GetTextMapPropagator().Extract(ctx, headersCarrier(message.Headers))
 	event := broker.Event{Type: broker.EventType(message.RoutingKey)}
 	switch event.Type {
 	case broker.EventUpload:
@@ -132,9 +151,10 @@ func decodeDelivery(message amqp.Delivery) (broker.Delivery, error) {
 		return broker.Delivery{}, fmt.Errorf("unknown routing key %q", message.RoutingKey)
 	}
 	return broker.Delivery{
-		Event:  event,
-		Ack:    func() error { return message.Ack(false) },
-		Reject: func(requeue bool) error { return message.Nack(false, requeue) },
+		Context: ctx,
+		Event:   event,
+		Ack:     func() error { return message.Ack(false) },
+		Reject:  func(requeue bool) error { return message.Nack(false, requeue) },
 	}, nil
 }
 

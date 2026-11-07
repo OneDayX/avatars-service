@@ -15,6 +15,9 @@ import (
 	"github.com/example/gophprofile/internal/repository"
 	"github.com/example/gophprofile/internal/storage"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 type AvatarService struct {
@@ -36,8 +39,17 @@ func validateUserID(userID string) (string, error) {
 	return userID, nil
 }
 
-func (s *AvatarService) Upload(ctx context.Context, userID, fileName string, data []byte) (*domain.Avatar, error) {
-	userID, err := validateUserID(userID)
+func (s *AvatarService) Upload(ctx context.Context, userID, fileName string, data []byte) (result *domain.Avatar, err error) {
+	ctx, span := otel.Tracer("gophprofile/avatars").Start(ctx, "avatar.upload")
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+	}()
+	span.SetAttributes(attribute.String("user_id", userID), attribute.String("file_name", fileName), attribute.Int("file_size", len(data)))
+	userID, err = validateUserID(userID)
 	if err != nil {
 		return nil, err
 	}

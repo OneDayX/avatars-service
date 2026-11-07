@@ -16,6 +16,7 @@ import (
 	"github.com/example/gophprofile/internal/observability"
 	postgresrepo "github.com/example/gophprofile/internal/repository/postgres"
 	"github.com/example/gophprofile/internal/services"
+	basestorage "github.com/example/gophprofile/internal/storage"
 	miniostorage "github.com/example/gophprofile/internal/storage/minio"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -51,14 +52,16 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
-	if err := postgresrepo.Migrate(ctx, pool, cfg.MigrationsDir); err != nil {
+	db := postgresrepo.NewTracedPool(pool)
+	if err := postgresrepo.Migrate(ctx, db, cfg.MigrationsDir); err != nil {
 		return err
 	}
-	repo := postgresrepo.NewAvatarRepository(pool)
-	storage, err := miniostorage.New(cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3UseSSL)
+	repo := postgresrepo.NewAvatarRepository(db)
+	s3, err := miniostorage.New(cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3UseSSL)
 	if err != nil {
 		return err
 	}
+	storage := basestorage.NewTracedStorage(s3)
 	if err := storage.EnsureBucket(ctx); err != nil {
 		return err
 	}

@@ -14,6 +14,10 @@ import (
 	"github.com/example/gophprofile/internal/repository"
 	"github.com/example/gophprofile/internal/storage"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Worker struct {
@@ -46,23 +50,40 @@ func (w *Worker) Run(ctx context.Context) error {
 			if !ok {
 				return fmt.Errorf("broker delivery channel closed")
 			}
-			err := w.processWithRetry(ctx, delivery.Event)
-			if err == nil {
-				if err := delivery.Ack(); err != nil {
-					return err
-				}
-				continue
-			}
-			w.logger.ErrorContext(ctx, "event processing failed", "type", delivery.Event.Type, "error", err)
-			if errors.Is(ctx.Err(), context.Canceled) {
-				_ = delivery.Reject(true)
-				return nil
-			}
-			if err := delivery.Reject(false); err != nil {
+			if err := w.handleDelivery(ctx, delivery); err != nil {
 				return err
 			}
 		}
 	}
+}
+
+func (w *Worker) handleDelivery(ctx context.Context, delivery broker.Delivery) error {
+	deliveryContext := delivery.Context
+	if deliveryContext == nil {
+		deliveryContext = ctx
+	}
+	eventContext, span := otel.Tracer("gophprofile/worker").Start(deliveryContext, "rabbitmq.process "+string(delivery.Event.Type),
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(attribute.String("messaging.operation.type", "process"), attribute.String("messaging.rabbitmq.destination.routing_key", string(delivery.Event.Type))),
+	)
+	defer span.End()
+	err := w.processWithRetry(eventContext, delivery.Event)
+	if err == nil {
+		if err := delivery.Ack(); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			return err
+		}
+		return nil
+	}
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+	w.logger.ErrorContext(eventContext, "event processing failed", "type", delivery.Event.Type, "error", err)
+	if errors.Is(ctx.Err(), context.Canceled) {
+		_ = delivery.Reject(true)
+		return nil
+	}
+	return delivery.Reject(false)
 }
 
 func (w *Worker) processWithRetry(ctx context.Context, event broker.Event) error {

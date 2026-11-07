@@ -20,9 +20,10 @@ type Event struct {
 }
 
 type Delivery struct {
-	Event  Event
-	Ack    func() error
-	Reject func(requeue bool) error
+	Context context.Context
+	Event   Event
+	Ack     func() error
+	Reject  func(requeue bool) error
 }
 
 type Publisher interface {

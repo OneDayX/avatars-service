@@ -11,6 +11,7 @@ import (
 	"github.com/example/gophprofile/internal/config"
 	"github.com/example/gophprofile/internal/observability"
 	postgresrepo "github.com/example/gophprofile/internal/repository/postgres"
+	basestorage "github.com/example/gophprofile/internal/storage"
 	miniostorage "github.com/example/gophprofile/internal/storage/minio"
 	"github.com/example/gophprofile/internal/worker"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -45,11 +46,13 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
-	repo := postgresrepo.NewAvatarRepository(pool)
-	storage, err := miniostorage.New(cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3UseSSL)
+	db := postgresrepo.NewTracedPool(pool)
+	repo := postgresrepo.NewAvatarRepository(db)
+	s3, err := miniostorage.New(cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3UseSSL)
 	if err != nil {
 		return err
 	}
+	storage := basestorage.NewTracedStorage(s3)
 	broker, err := rabbitmq.New(cfg.RabbitMQURL)
 	if err != nil {
 		return err
