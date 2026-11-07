@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 )
 
@@ -13,10 +14,11 @@ type HealthHandler struct {
 	database Pinger
 	storage  Pinger
 	broker   Pinger
+	logger   *slog.Logger
 }
 
-func NewHealthHandler(database, storage, broker Pinger) *HealthHandler {
-	return &HealthHandler{database: database, storage: storage, broker: broker}
+func NewHealthHandler(database, storage, broker Pinger, logger *slog.Logger) *HealthHandler {
+	return &HealthHandler{database: database, storage: storage, broker: broker, logger: logger}
 }
 
 func (h *HealthHandler) Check(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +28,8 @@ func (h *HealthHandler) Check(w http.ResponseWriter, r *http.Request) {
 		"database": h.database.Ping, "s3": h.storage.Ping, "broker": h.broker.Ping,
 	} {
 		if err := check(r.Context()); err != nil {
-			components[name] = "error: " + err.Error()
+			h.logger.Error("health check failed", "component", name, "error", err)
+			components[name] = "error"
 			healthy = false
 		}
 	}

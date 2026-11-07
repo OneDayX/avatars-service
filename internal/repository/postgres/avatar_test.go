@@ -37,6 +37,19 @@ func TestCreate(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestDeleteByID(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+	repo := NewAvatarRepository(mock)
+	id := uuid.New()
+	mock.ExpectExec("DELETE FROM avatars WHERE id").WithArgs(id).WillReturnResult(pgxmock.NewResult("DELETE", 1))
+	require.NoError(t, repo.DeleteByID(context.Background(), id))
+	mock.ExpectExec("DELETE FROM avatars WHERE id").WithArgs(id).WillReturnResult(pgxmock.NewResult("DELETE", 0))
+	require.ErrorIs(t, repo.DeleteByID(context.Background(), id), domain.ErrNotFound)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestGetByID(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)

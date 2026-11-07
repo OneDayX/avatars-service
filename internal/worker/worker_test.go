@@ -26,6 +26,7 @@ type repoStub struct {
 }
 
 func (r *repoStub) Create(context.Context, *domain.Avatar) error { return nil }
+func (r *repoStub) DeleteByID(context.Context, uuid.UUID) error  { return nil }
 func (r *repoStub) GetByID(context.Context, uuid.UUID, bool) (*domain.Avatar, error) {
 	if r.getErr != nil {
 		return nil, r.getErr

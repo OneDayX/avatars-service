@@ -32,6 +32,13 @@ func (r *fakeRepo) Create(_ context.Context, a *domain.Avatar) error {
 	r.avatars[a.ID] = &copy
 	return nil
 }
+func (r *fakeRepo) DeleteByID(_ context.Context, id uuid.UUID) error {
+	if _, ok := r.avatars[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(r.avatars, id)
+	return nil
+}
 func (r *fakeRepo) GetByID(_ context.Context, id uuid.UUID, includeDeleted bool) (*domain.Avatar, error) {
 	a, ok := r.avatars[id]
 	if !ok || (a.DeletedAt != nil && !includeDeleted) {
@@ -187,10 +194,12 @@ func TestUploadRollbackAndPublishError(t *testing.T) {
 	_, err := service.Upload(context.Background(), "user", "x", validPNG(t))
 	require.Error(t, err)
 	require.Empty(t, store.objects)
-	service, _, _, publisher := setupService()
+	service, repo, store, publisher := setupService()
 	publisher.err = errors.New("broker down")
 	_, err = service.Upload(context.Background(), "user", "x", validPNG(t))
 	require.ErrorContains(t, err, "publish upload event")
+	require.Empty(t, repo.avatars)
+	require.Empty(t, store.objects)
 }
 
 func TestGetVariants(t *testing.T) {

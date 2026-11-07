@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/example/gophprofile/internal/domain"
@@ -29,10 +30,11 @@ type AvatarService interface {
 type AvatarHandler struct {
 	service     AvatarService
 	maxFileSize int64
+	logger      *slog.Logger
 }
 
-func NewAvatarHandler(service AvatarService, maxFileSize int64) *AvatarHandler {
-	return &AvatarHandler{service: service, maxFileSize: maxFileSize}
+func NewAvatarHandler(service AvatarService, maxFileSize int64, logger *slog.Logger) *AvatarHandler {
+	return &AvatarHandler{service: service, maxFileSize: maxFileSize, logger: logger}
 }
 
 func (h *AvatarHandler) Upload(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +76,7 @@ func (h *AvatarHandler) uploadError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrInvalidUserID):
 		writeError(w, http.StatusBadRequest, "Invalid User-ID", "X-User-ID must be a non-empty string up to 255 bytes")
 	default:
-		writeError(w, http.StatusInternalServerError, "Internal server error", err.Error())
+		h.internalError(w, err)
 	}
 }
 
@@ -114,7 +116,7 @@ func (h *AvatarHandler) readError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrInvalidUserID):
 		writeError(w, http.StatusBadRequest, "Invalid User-ID", "User ID must be valid")
 	default:
-		writeError(w, http.StatusInternalServerError, "Internal server error", err.Error())
+		h.internalError(w, err)
 	}
 }
 
@@ -209,8 +211,13 @@ func (h *AvatarHandler) deleteError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrInvalidUserID):
 		writeError(w, http.StatusBadRequest, "Invalid User-ID", "X-User-ID is required")
 	default:
-		writeError(w, http.StatusInternalServerError, "Internal server error", err.Error())
+		h.internalError(w, err)
 	}
+}
+
+func (h *AvatarHandler) internalError(w http.ResponseWriter, err error) {
+	h.logger.Error("avatar request failed", "error", err)
+	writeError(w, http.StatusInternalServerError, "Internal server error", "")
 }
 
 func writeFileTooLarge(w http.ResponseWriter, maxSize int64) {

@@ -48,6 +48,17 @@ func (r *AvatarRepository) Create(ctx context.Context, avatar *domain.Avatar) er
 	return nil
 }
 
+func (r *AvatarRepository) DeleteByID(ctx context.Context, id uuid.UUID) error {
+	result, err := r.pool.Exec(ctx, `DELETE FROM avatars WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete avatar: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *AvatarRepository) GetByID(ctx context.Context, id uuid.UUID, includeDeleted bool) (*domain.Avatar, error) {
 	query := `SELECT ` + avatarColumns + ` FROM avatars WHERE id = $1`
 	if !includeDeleted {

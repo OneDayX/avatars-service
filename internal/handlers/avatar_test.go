@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -54,6 +55,10 @@ func (s *stubService) DeleteLatest(_ context.Context, userID string) error {
 	return s.err
 }
 
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 func testAvatar() *domain.Avatar {
 	now := time.Now().UTC()
 	return &domain.Avatar{ID: uuid.New(), UserID: "user", FileName: "me.png", MIMEType: "image/png", ProcessingStatus: "pending", ThumbnailS3Keys: map[string]string{}, CreatedAt: now, UpdatedAt: now}
@@ -76,7 +81,7 @@ func multipartRequest(t *testing.T, data []byte) *http.Request {
 
 func TestUploadHandler(t *testing.T) {
 	service := &stubService{avatar: testAvatar()}
-	handler := NewAvatarHandler(service, 1024)
+	handler := NewAvatarHandler(service, 1024, testLogger())
 	response := httptest.NewRecorder()
 	handler.Upload(response, multipartRequest(t, []byte("png")))
 	require.Equal(t, http.StatusCreated, response.Code)
@@ -90,19 +95,31 @@ func TestUploadHandlerErrors(t *testing.T) {
 		status int
 	}{{domain.ErrInvalidFile, 400}, {domain.ErrFileTooLarge, 413}, {domain.ErrInvalidUserID, 400}, {errors.New("db"), 500}} {
 		service := &stubService{err: test.err}
-		handler := NewAvatarHandler(service, 1024)
+		handler := NewAvatarHandler(service, 1024, testLogger())
 		response := httptest.NewRecorder()
 		handler.Upload(response, multipartRequest(t, []byte("data")))
 		require.Equal(t, test.status, response.Code)
 	}
-	handler := NewAvatarHandler(&stubService{}, 2)
+	handler := NewAvatarHandler(&stubService{}, 2, testLogger())
 	response := httptest.NewRecorder()
 	handler.Upload(response, multipartRequest(t, []byte("large")))
 	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
 }
 
+func TestInternalErrorIsLoggedAndHidden(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	handler := NewAvatarHandler(&stubService{err: errors.New("postgres://internal-db")}, 1024, logger)
+	response := httptest.NewRecorder()
+	handler.Upload(response, multipartRequest(t, []byte("data")))
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	require.JSONEq(t, `{"error":"Internal server error"}`, response.Body.String())
+	require.NotContains(t, response.Body.String(), "internal-db")
+	require.Contains(t, logs.String(), "postgres://internal-db")
+}
+
 func avatarRouter(service AvatarService) http.Handler {
-	handler := NewAvatarHandler(service, 1024)
+	handler := NewAvatarHandler(service, 1024, testLogger())
 	router := chi.NewRouter()
 	router.Get("/api/v1/avatars/{avatar_id}", handler.Get)
 	router.Get("/api/v1/avatars/{avatar_id}/metadata", handler.Metadata)
@@ -177,17 +194,17 @@ func TestDeleteHandlers(t *testing.T) {
 }
 
 func TestHealthHandler(t *testing.T) {
-	healthy := &stubService{}
-	handler := NewHealthHandler(healthyPinger{}, healthyPinger{}, healthyPinger{})
+	handler := NewHealthHandler(healthyPinger{}, healthyPinger{}, healthyPinger{}, testLogger())
 	response := httptest.NewRecorder()
 	handler.Check(response, httptest.NewRequest(http.MethodGet, "/health", nil))
 	require.Equal(t, http.StatusOK, response.Code)
-	handler = NewHealthHandler(healthyPinger{}, healthyPinger{}, healthyPinger{err: errors.New("down")})
+	handler = NewHealthHandler(healthyPinger{}, healthyPinger{}, healthyPinger{err: errors.New("down")}, testLogger())
 	response = httptest.NewRecorder()
 	handler.Check(response, httptest.NewRequest(http.MethodGet, "/health", nil))
 	require.Equal(t, http.StatusServiceUnavailable, response.Code)
 	require.Contains(t, response.Body.String(), "degraded")
-	_ = healthy
+	require.Contains(t, response.Body.String(), `"broker":"error"`)
+	require.NotContains(t, response.Body.String(), "down")
 }
 
 type healthyPinger struct{ err error }
@@ -223,7 +240,7 @@ func TestRateLimiterAndCORS(t *testing.T) {
 func TestWebHandlers(t *testing.T) {
 	avatar := testAvatar()
 	service := &stubService{avatar: avatar}
-	handler, err := NewWebHandler(service, "../../web", 1024)
+	handler, err := NewWebHandler(service, "../../web", 1024, testLogger())
 	require.NoError(t, err)
 	response := httptest.NewRecorder()
 	handler.UploadForm(response, httptest.NewRequest(http.MethodGet, "/web/upload", nil))

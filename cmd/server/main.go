@@ -58,9 +58,10 @@ func run(logger *slog.Logger) error {
 	}
 	defer func() { _ = broker.Close() }()
 	service := services.NewAvatarService(repo, storage, broker, cfg.MaxFileSize)
-	avatarHandler := handlers.NewAvatarHandler(service, cfg.MaxFileSize)
-	healthHandler := handlers.NewHealthHandler(repo, storage, broker)
-	webHandler, err := handlers.NewWebHandler(service, cfg.WebDir, cfg.MaxFileSize)
+	httpLogger := logger.With("component", "http")
+	avatarHandler := handlers.NewAvatarHandler(service, cfg.MaxFileSize, httpLogger)
+	healthHandler := handlers.NewHealthHandler(repo, storage, broker, httpLogger)
+	webHandler, err := handlers.NewWebHandler(service, cfg.WebDir, cfg.MaxFileSize, httpLogger)
 	if err != nil {
 		return err
 	}

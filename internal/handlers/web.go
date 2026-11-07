@@ -3,6 +3,7 @@ package handlers
 import (
 	"html/template"
 	"io"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 
@@ -13,14 +14,15 @@ type WebHandler struct {
 	service     AvatarService
 	templates   *template.Template
 	maxFileSize int64
+	logger      *slog.Logger
 }
 
-func NewWebHandler(service AvatarService, webDirectory string, maxFileSize int64) (*WebHandler, error) {
+func NewWebHandler(service AvatarService, webDirectory string, maxFileSize int64, logger *slog.Logger) (*WebHandler, error) {
 	templates, err := template.ParseGlob(filepath.Join(webDirectory, "templates", "*.html"))
 	if err != nil {
 		return nil, err
 	}
-	return &WebHandler{service: service, templates: templates, maxFileSize: maxFileSize}, nil
+	return &WebHandler{service: service, templates: templates, maxFileSize: maxFileSize, logger: logger}, nil
 }
 
 func (h *WebHandler) UploadForm(w http.ResponseWriter, r *http.Request) {
@@ -70,5 +72,6 @@ func (h *WebHandler) render(w http.ResponseWriter, status int, name string, data
 }
 
 func (h *WebHandler) readError(w http.ResponseWriter, err error) {
-	writeError(w, http.StatusInternalServerError, "Web interface error", err.Error())
+	h.logger.Error("web request failed", "error", err)
+	writeError(w, http.StatusInternalServerError, "Internal server error", "")
 }

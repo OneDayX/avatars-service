@@ -45,7 +45,7 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer func() { _ = broker.Close() }()
-	avatarWorker := worker.New(repo, storage, broker, cfg.WorkerMaxRetries, cfg.WorkerRetryDelay, logger)
+	avatarWorker := worker.New(repo, storage, broker, cfg.WorkerMaxRetries, cfg.WorkerRetryDelay, logger.With("component", "worker"))
 	logger.Info("worker started")
 	return avatarWorker.Run(ctx)
 }

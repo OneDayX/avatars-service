@@ -28,7 +28,7 @@ func NewAvatarService(repo repository.AvatarRepository, storage storage.Storage,
 	return &AvatarService{repo: repo, storage: storage, publisher: publisher, maxFileSize: maxFileSize}
 }
 
-func ValidateUserID(userID string) (string, error) {
+func validateUserID(userID string) (string, error) {
 	userID = strings.TrimSpace(userID)
 	if userID == "" || len(userID) > 255 || !utf8.ValidString(userID) || strings.ContainsAny(userID, "\x00\r\n\t") {
 		return "", domain.ErrInvalidUserID
@@ -37,7 +37,7 @@ func ValidateUserID(userID string) (string, error) {
 }
 
 func (s *AvatarService) Upload(ctx context.Context, userID, fileName string, data []byte) (*domain.Avatar, error) {
-	userID, err := ValidateUserID(userID)
+	userID, err := validateUserID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -76,9 +76,24 @@ func (s *AvatarService) Upload(ctx context.Context, userID, fileName string, dat
 	}
 	event := domain.AvatarUploadEvent{AvatarID: avatar.ID.String(), UserID: avatar.UserID, S3Key: avatar.S3Key}
 	if err := s.publisher.PublishUpload(ctx, event); err != nil {
-		return nil, fmt.Errorf("publish upload event: %w", err)
+		publishErr := fmt.Errorf("publish upload event: %w", err)
+		if rollbackErr := s.rollbackUpload(context.WithoutCancel(ctx), avatar); rollbackErr != nil {
+			return nil, errors.Join(publishErr, fmt.Errorf("rollback upload: %w", rollbackErr))
+		}
+		return nil, publishErr
 	}
 	return avatar, nil
+}
+
+func (s *AvatarService) rollbackUpload(ctx context.Context, avatar *domain.Avatar) error {
+	var rollbackErrors []error
+	if err := s.repo.DeleteByID(ctx, avatar.ID); err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("delete avatar metadata: %w", err))
+	}
+	if err := s.storage.Delete(ctx, avatar.S3Key); err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("delete original file: %w", err))
+	}
+	return errors.Join(rollbackErrors...)
 }
 
 func (s *AvatarService) Get(ctx context.Context, id uuid.UUID, size string) (*domain.Avatar, storage.Object, error) {
@@ -90,7 +105,7 @@ func (s *AvatarService) Get(ctx context.Context, id uuid.UUID, size string) (*do
 }
 
 func (s *AvatarService) GetLatest(ctx context.Context, userID, size string) (*domain.Avatar, storage.Object, error) {
-	userID, err := ValidateUserID(userID)
+	userID, err := validateUserID(userID)
 	if err != nil {
 		return nil, storage.Object{}, err
 	}
@@ -133,7 +148,7 @@ func (s *AvatarService) Metadata(ctx context.Context, id uuid.UUID) (*domain.Ava
 }
 
 func (s *AvatarService) List(ctx context.Context, userID string) ([]domain.Avatar, error) {
-	userID, err := ValidateUserID(userID)
+	userID, err := validateUserID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +156,7 @@ func (s *AvatarService) List(ctx context.Context, userID string) ([]domain.Avata
 }
 
 func (s *AvatarService) Delete(ctx context.Context, id uuid.UUID, userID string) error {
-	userID, err := ValidateUserID(userID)
+	userID, err := validateUserID(userID)
 	if err != nil {
 		return err
 	}
@@ -160,7 +175,7 @@ func (s *AvatarService) Delete(ctx context.Context, id uuid.UUID, userID string)
 }
 
 func (s *AvatarService) DeleteLatest(ctx context.Context, userID string) error {
-	userID, err := ValidateUserID(userID)
+	userID, err := validateUserID(userID)
 	if err != nil {
 		return err
 	}
@@ -182,8 +197,4 @@ func (s *AvatarService) publishDelete(ctx context.Context, avatar *domain.Avatar
 		return fmt.Errorf("publish delete event: %w", err)
 	}
 	return nil
-}
-
-func IsNotFound(err error) bool {
-	return errors.Is(err, domain.ErrNotFound)
 }
