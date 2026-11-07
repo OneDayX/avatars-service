@@ -9,6 +9,7 @@ import (
 
 	"github.com/example/gophprofile/internal/broker/rabbitmq"
 	"github.com/example/gophprofile/internal/config"
+	"github.com/example/gophprofile/internal/observability"
 	postgresrepo "github.com/example/gophprofile/internal/repository/postgres"
 	miniostorage "github.com/example/gophprofile/internal/storage/minio"
 	"github.com/example/gophprofile/internal/worker"
@@ -16,7 +17,7 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := observability.NewLogger("gophprofile-worker")
 	if err := run(logger); err != nil {
 		logger.Error("worker stopped", "error", err)
 		os.Exit(1)
@@ -30,6 +31,15 @@ func run(logger *slog.Logger) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	shutdownTracing, err := observability.SetupTracing(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		defer cancel()
+		_ = shutdownTracing(shutdownCtx)
+	}()
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err

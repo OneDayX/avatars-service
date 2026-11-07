@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"html/template"
 	"io"
 	"log/slog"
@@ -57,7 +58,7 @@ func (h *WebHandler) Gallery(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "user_id")
 	avatars, err := h.service.List(r.Context(), userID)
 	if err != nil {
-		h.readError(w, err)
+		h.readError(r.Context(), w, err)
 		return
 	}
 	h.render(w, http.StatusOK, "gallery.html", map[string]any{"UserID": userID, "Avatars": avatars})
@@ -71,7 +72,7 @@ func (h *WebHandler) render(w http.ResponseWriter, status int, name string, data
 	}
 }
 
-func (h *WebHandler) readError(w http.ResponseWriter, err error) {
-	h.logger.Error("web request failed", "error", err)
+func (h *WebHandler) readError(ctx context.Context, w http.ResponseWriter, err error) {
+	h.logger.ErrorContext(ctx, "web request failed", "error", err)
 	writeError(w, http.StatusInternalServerError, "Internal server error", "")
 }

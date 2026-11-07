@@ -25,6 +25,10 @@ type Config struct {
 	ShutdownTimeout   time.Duration
 	WorkerMaxRetries  int
 	WorkerRetryDelay  time.Duration
+	OTelEnabled       bool
+	OTLPEndpoint      string
+	ServiceName       string
+	Environment       string
 }
 
 func Load() (Config, error) {
@@ -45,9 +49,15 @@ func Load() (Config, error) {
 		ShutdownTimeout:   10 * time.Second,
 		WorkerMaxRetries:  5,
 		WorkerRetryDelay:  500 * time.Millisecond,
+		OTLPEndpoint:      env("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+		ServiceName:       env("OTEL_SERVICE_NAME", "gophprofile"),
+		Environment:       env("APP_ENV", "development"),
 	}
 	var err error
 	if cfg.S3UseSSL, err = boolEnv("S3_USE_SSL", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.OTelEnabled, err = boolEnv("OTEL_ENABLED", false); err != nil {
 		return Config{}, err
 	}
 	if cfg.MaxFileSize, err = int64Env("MAX_FILE_SIZE", cfg.MaxFileSize); err != nil {

@@ -53,7 +53,7 @@ func (w *Worker) Run(ctx context.Context) error {
 				}
 				continue
 			}
-			w.logger.Error("event processing failed", "type", delivery.Event.Type, "error", err)
+			w.logger.ErrorContext(ctx, "event processing failed", "type", delivery.Event.Type, "error", err)
 			if errors.Is(ctx.Err(), context.Canceled) {
 				_ = delivery.Reject(true)
 				return nil
@@ -74,7 +74,7 @@ func (w *Worker) processWithRetry(ctx context.Context, event broker.Event) error
 		if attempt == w.maxRetries || ctx.Err() != nil {
 			break
 		}
-		w.logger.Warn("retrying event", "type", event.Type, "attempt", attempt+1, "error", err)
+		w.logger.WarnContext(ctx, "retrying event", "type", event.Type, "attempt", attempt+1, "error", err)
 		if sleepErr := w.sleep(ctx, w.retryDelay<<attempt); sleepErr != nil {
 			return sleepErr
 		}

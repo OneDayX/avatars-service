@@ -13,6 +13,7 @@ import (
 	"github.com/example/gophprofile/internal/broker/rabbitmq"
 	"github.com/example/gophprofile/internal/config"
 	"github.com/example/gophprofile/internal/handlers"
+	"github.com/example/gophprofile/internal/observability"
 	postgresrepo "github.com/example/gophprofile/internal/repository/postgres"
 	"github.com/example/gophprofile/internal/services"
 	miniostorage "github.com/example/gophprofile/internal/storage/minio"
@@ -22,7 +23,7 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := observability.NewLogger("gophprofile")
 	if err := run(logger); err != nil {
 		logger.Error("server stopped", "error", err)
 		os.Exit(1)
@@ -36,6 +37,15 @@ func run(logger *slog.Logger) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	shutdownTracing, err := observability.SetupTracing(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		defer cancel()
+		_ = shutdownTracing(shutdownCtx)
+	}()
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
@@ -67,7 +77,7 @@ func run(logger *slog.Logger) error {
 	}
 	limiter := handlers.NewRateLimiter(cfg.RateLimitRequests, cfg.RateLimitWindow)
 	router := chi.NewRouter()
-	router.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer, middleware.Timeout(30*time.Second), handlers.CORS(cfg.AllowedOrigins))
+	router.Use(observability.HTTPTracing("gophprofile"), middleware.RequestID, middleware.RealIP, middleware.Recoverer, middleware.Timeout(30*time.Second), handlers.CORS(cfg.AllowedOrigins))
 	router.Get("/health", healthHandler.Check)
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/web/upload", http.StatusSeeOther) })
 	router.Route("/api/v1", func(r chi.Router) {
