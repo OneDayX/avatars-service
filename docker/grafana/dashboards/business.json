@@ -1,0 +1,47 @@
+{
+  "uid": "gophprofile-business",
+  "title": "GophProfile — Business KPIs and Worker",
+  "tags": ["gophprofile", "business"],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {"from": "now-6h", "to": "now"},
+  "schemaVersion": 40,
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Avatar uploads",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "targets": [{"refId": "A", "expr": "sum(rate(avatars_uploads_total[5m])) by (status)", "legendFormat": "{{status}}"}]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Upload p95 duration",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum(rate(avatars_upload_duration_seconds_bucket[5m])) by (le))"}]
+    },
+    {
+      "id": 3, "type": "bargauge", "title": "Original avatar storage by user",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 8},
+      "fieldConfig": {"defaults": {"unit": "decbytes"}, "overrides": []},
+      "options": {"orientation": "horizontal", "displayMode": "gradient"},
+      "targets": [{"refId": "A", "expr": "avatars_storage_bytes", "legendFormat": "{{user_id}}"}]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Worker events",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 8},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "targets": [{"refId": "A", "expr": "sum(rate(avatars_worker_events_total[5m])) by (type, status)", "legendFormat": "{{type}} — {{status}}"}]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Worker p95 event duration",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 17},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum(rate(avatars_worker_event_duration_seconds_bucket[5m])) by (le, type))", "legendFormat": "{{type}}"}]
+    }
+  ]
+}

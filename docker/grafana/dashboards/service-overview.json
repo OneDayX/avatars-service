@@ -1,0 +1,74 @@
+{
+  "uid": "gophprofile-overview",
+  "title": "GophProfile — Service Overview",
+  "tags": ["gophprofile", "RED"],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {"from": "now-1h", "to": "now"},
+  "schemaVersion": 40,
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Request rate",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "targets": [{"refId": "A", "expr": "sum(rate(avatars_http_requests_total[5m]))"}]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "5xx error rate",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "percentunit", "max": 1}, "overrides": []},
+      "targets": [{"refId": "A", "expr": "sum(rate(avatars_http_errors_total[5m])) / clamp_min(sum(rate(avatars_http_requests_total[5m])), 0.001)"}]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "HTTP p95 latency",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum(rate(avatars_http_request_duration_seconds_bucket[5m])) by (le))"}]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Requests by route and status",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 8},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "targets": [{"refId": "A", "expr": "sum(rate(avatars_http_requests_total[5m])) by (path, status)", "legendFormat": "{{path}} — {{status}}"}]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Resource utilization",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {"refId": "A", "expr": "process_resident_memory_bytes{job=~\"gophprofile-.*\"}", "legendFormat": "RSS {{job}}"},
+        {"refId": "B", "expr": "go_goroutines{job=~\"gophprofile-.*\"}", "legendFormat": "Goroutines {{job}}"}
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "PostgreSQL connections",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 17},
+      "targets": [{"refId": "A", "expr": "avatars_db_connections", "legendFormat": "{{job}} — {{state}}"}]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "RabbitMQ queue depth",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 17},
+      "targets": [{"refId": "A", "expr": "avatars_queue_messages", "legendFormat": "{{job}}"}]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Queue availability",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 17},
+      "fieldConfig": {"defaults": {"unit": "none", "min": 0, "max": 1}, "overrides": []},
+      "targets": [{"refId": "A", "expr": "avatars_queue_up", "legendFormat": "{{job}}"}]
+    },
+    {
+      "id": 9, "type": "logs", "title": "Error logs (trace_id available)",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 25},
+      "options": {"showTime": true, "showLabels": true, "wrapLogMessage": true},
+      "targets": [{"refId": "A", "expr": "{service=~\"server|worker\"} | json | level=\"ERROR\""}]
+    }
+  ]
+}

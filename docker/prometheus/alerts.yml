@@ -1,0 +1,31 @@
+groups:
+  - name: gophprofile
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(avatars_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(avatars_http_requests_total[5m])), 0.001) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GophProfile HTTP 5xx rate exceeds 10%"
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, sum(rate(avatars_http_request_duration_seconds_bucket[5m])) by (le)) > 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "GophProfile HTTP p95 latency exceeds 5 seconds"
+      - alert: HighUploadFailureRate
+        expr: sum(rate(avatars_uploads_total{status="error"}[5m])) / clamp_min(sum(rate(avatars_uploads_total[5m])), 0.001) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 10% of avatar uploads are failing"
+      - alert: ProcessingQueueUnavailable
+        expr: avatars_queue_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "GophProfile cannot inspect the RabbitMQ processing queue"
