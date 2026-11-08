@@ -11,3 +11,7 @@ resources:
   - worker-deployment.yaml
   - services.yaml
   - ingress.yaml
+  - hpa.yaml
+  - servicemonitors.yaml
+  - networkpolicy.yaml
+  - pdb.yaml
