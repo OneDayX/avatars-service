@@ -12,6 +12,7 @@ type Config struct {
 	MetricsAddr       string
 	DatabaseURL       string
 	MigrationsDir     string
+	RunMigrations     bool
 	WebDir            string
 	S3Endpoint        string
 	S3AccessKey       string
@@ -60,6 +61,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.OTelEnabled, err = boolEnv("OTEL_ENABLED", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.RunMigrations, err = boolEnv("RUN_MIGRATIONS", true); err != nil {
 		return Config{}, err
 	}
 	if cfg.MaxFileSize, err = int64Env("MAX_FILE_SIZE", cfg.MaxFileSize); err != nil {

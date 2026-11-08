@@ -15,6 +15,7 @@ func TestLoadDefaults(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(10<<20), cfg.MaxFileSize)
 	require.Equal(t, "avatars", cfg.S3Bucket)
+	require.True(t, cfg.RunMigrations)
 	require.Equal(t, time.Minute, cfg.RateLimitWindow)
 }
 
@@ -26,6 +27,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("WORKER_MAX_RETRIES", "2")
 	t.Setenv("WORKER_RETRY_DELAY", "10ms")
 	t.Setenv("SHUTDOWN_TIMEOUT", "3s")
+	t.Setenv("RUN_MIGRATIONS", "false")
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, int64(1024), cfg.MaxFileSize)
@@ -33,6 +35,7 @@ func TestLoadOverrides(t *testing.T) {
 	require.Equal(t, 5, cfg.RateLimitRequests)
 	require.Equal(t, 2*time.Second, cfg.RateLimitWindow)
 	require.Equal(t, 3*time.Second, cfg.ShutdownTimeout)
+	require.False(t, cfg.RunMigrations)
 }
 
 func TestLoadRejectsInvalidValues(t *testing.T) {
