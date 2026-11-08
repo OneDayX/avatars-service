@@ -1,0 +1,30 @@
+image:
+  repository: ghcr.io/onedayx/avatars-service
+  tag: v3.0.0
+  pullPolicy: Always
+secret:
+  create: false
+  existingSecret: gophprofile-secrets
+config:
+  environment: production
+  s3UseSSL: true
+  corsAllowedOrigins: "https://avatars.example.com"
+  otelEnabled: true
+server:
+  replicaCount: 3
+autoscaling:
+  minReplicas: 3
+  maxReplicas: 20
+ingress:
+  host: avatars.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+  tls:
+    - secretName: avatars-tls
+      hosts: ["avatars.example.com"]
+metrics:
+  serviceMonitor:
+    enabled: true
+networkPolicy:
+  enabled: true
