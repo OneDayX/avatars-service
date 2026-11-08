@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/example/gophprofile/internal/domain"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -12,8 +11,8 @@ import (
 
 type usageRepositoryStub struct{}
 
-func (usageRepositoryStub) StorageUsage(context.Context) ([]domain.UserStorageUsage, error) {
-	return []domain.UserStorageUsage{{UserID: "user", Bytes: 2048}}, nil
+func (usageRepositoryStub) StorageUsage(context.Context) (int64, error) {
+	return 2048, nil
 }
 
 type queueStub struct{}
@@ -27,6 +26,8 @@ func TestStorageUsageCollector(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, families, 1)
 	require.Equal(t, "avatars_storage_bytes", families[0].GetName())
+	require.Len(t, families[0].Metric, 1)
+	require.Empty(t, families[0].Metric[0].Label)
 	require.Equal(t, float64(2048), families[0].Metric[0].Gauge.GetValue())
 }
 

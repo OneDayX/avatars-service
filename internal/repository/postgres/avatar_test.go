@@ -89,10 +89,10 @@ func TestStorageUsage(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 	repo := NewAvatarRepository(mock)
-	mock.ExpectQuery("SELECT user_id, SUM").WillReturnRows(pgxmock.NewRows([]string{"user_id", "bytes"}).AddRow("user", int64(1024)))
+	mock.ExpectQuery("SELECT COALESCE").WillReturnRows(pgxmock.NewRows([]string{"bytes"}).AddRow(int64(1024)))
 	usage, err := repo.StorageUsage(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, []domain.UserStorageUsage{{UserID: "user", Bytes: 1024}}, usage)
+	require.Equal(t, int64(1024), usage)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -4,13 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/example/gophprofile/internal/domain"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 type UsageRepository interface {
-	StorageUsage(ctx context.Context) ([]domain.UserStorageUsage, error)
+	StorageUsage(ctx context.Context) (int64, error)
 }
 
 type Queue interface {
@@ -23,7 +22,7 @@ type StorageUsageCollector struct {
 }
 
 func NewStorageUsageCollector(repo UsageRepository) *StorageUsageCollector {
-	return &StorageUsageCollector{repo: repo, desc: prometheus.NewDesc("avatars_storage_bytes", "Storage used by active avatar originals", []string{"user_id"}, nil)}
+	return &StorageUsageCollector{repo: repo, desc: prometheus.NewDesc("avatars_storage_bytes", "Storage used by active avatar originals", nil, nil)}
 }
 
 func (c *StorageUsageCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -37,9 +36,7 @@ func (c *StorageUsageCollector) Collect(ch chan<- prometheus.Metric) {
 	if err != nil {
 		return
 	}
-	for _, item := range usage {
-		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.GaugeValue, float64(item.Bytes), item.UserID)
-	}
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.GaugeValue, float64(usage))
 }
 
 type InfrastructureCollector struct {

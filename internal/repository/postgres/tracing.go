@@ -54,11 +54,20 @@ func (p *TracedPool) Query(ctx context.Context, sql string, args ...any) (pgx.Ro
 	return rows, err
 }
 
+type tracedRow struct {
+	row  pgx.Row
+	span trace.Span
+}
+
+func (r *tracedRow) Scan(dest ...any) error {
+	err := r.row.Scan(dest...)
+	endDBSpan(r.span, err)
+	return err
+}
+
 func (p *TracedPool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	ctx, span := p.start(ctx, "QUERY_ROW", sql)
-	row := p.Pool.QueryRow(ctx, sql, args...)
-	span.End()
-	return row
+	return &tracedRow{row: p.Pool.QueryRow(ctx, sql, args...), span: span}
 }
 
 func (p *TracedPool) Begin(ctx context.Context) (pgx.Tx, error) {

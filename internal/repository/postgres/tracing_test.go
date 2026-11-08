@@ -32,3 +32,26 @@ func TestTracedPool(t *testing.T) {
 	require.Equal(t, "postgres.exec", spans[0].Name())
 	require.Equal(t, codes.Error, spans[0].Status().Code)
 }
+
+func TestTracedPoolQueryRowRecordsScanError(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { otel.SetTracerProvider(previous) })
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+	expected := errors.New("row scan failed")
+	mock.ExpectQuery("SELECT size_bytes").WithArgs(1).WillReturnError(expected)
+	pool := NewTracedPool(mock)
+	row := pool.QueryRow(context.Background(), "SELECT size_bytes FROM avatars WHERE id = $1", 1)
+	require.Empty(t, recorder.Ended())
+	var size int64
+	require.ErrorIs(t, row.Scan(&size), expected)
+	spans := recorder.Ended()
+	require.Len(t, spans, 1)
+	require.Equal(t, "postgres.query_row", spans[0].Name())
+	require.Equal(t, codes.Error, spans[0].Status().Code)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

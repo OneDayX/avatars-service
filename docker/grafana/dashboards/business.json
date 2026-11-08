@@ -22,12 +22,12 @@
       "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum(rate(avatars_upload_duration_seconds_bucket[5m])) by (le))"}]
     },
     {
-      "id": 3, "type": "bargauge", "title": "Original avatar storage by user",
+      "id": 3, "type": "bargauge", "title": "Original avatar storage",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"h": 9, "w": 12, "x": 0, "y": 8},
       "fieldConfig": {"defaults": {"unit": "decbytes"}, "overrides": []},
       "options": {"orientation": "horizontal", "displayMode": "gradient"},
-      "targets": [{"refId": "A", "expr": "avatars_storage_bytes", "legendFormat": "{{user_id}}"}]
+      "targets": [{"refId": "A", "expr": "avatars_storage_bytes", "legendFormat": "Total"}]
     },
     {
       "id": 4, "type": "timeseries", "title": "Worker events",

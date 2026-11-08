@@ -71,7 +71,7 @@ Docker Compose дополнительно запускает Jaeger, Prometheus,
 - метрики server: http://localhost:8080/metrics;
 - метрики worker: http://localhost:8081/metrics.
 
-Promtail читает JSON-логи контейнеров `server` и `worker` и отправляет их в Loki. Логи внутри tracing context содержат `trace_id` и `span_id`; datasource Loki в Grafana связывает их с Jaeger. Собираются HTTP RED-метрики, длительность и количество загрузок, использование хранилища по пользователям, события worker, соединения PostgreSQL и глубина RabbitMQ queue.
+Promtail читает JSON-логи контейнеров `server` и `worker` и отправляет их в Loki. Логи внутри tracing context содержат `trace_id` и `span_id`; datasource Loki в Grafana связывает их с Jaeger. Собираются HTTP RED-метрики, длительность и количество загрузок, общее использование хранилища, события worker, соединения PostgreSQL и глубина RabbitMQ queue.
 
 Alertmanager получает алерты о 5xx rate выше 10%, p95 latency выше 5 секунд, ошибках загрузок и недоступной очереди. По умолчанию используется локальный receiver без внешних уведомлений; его можно расширить в `docker/alertmanager/alertmanager.yml`.
 
