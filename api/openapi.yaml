@@ -1,0 +1,509 @@
+openapi: 3.0.3
+info:
+  title: GophProfile API
+  version: 1.0.0
+  description: Upload, asynchronous processing, delivery and deletion of user avatars.
+servers:
+  - url: http://localhost:8080
+    description: Local Docker Compose
+  - url: https://avatars.example.com
+    description: Production
+paths:
+  /api/v1/avatars:
+    post:
+      summary: Upload an avatar
+      parameters:
+        - $ref: "#/components/parameters/UserIDHeader"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG or WebP image, maximum 10 MiB.
+      responses:
+        "201":
+          description: Avatar stored and queued for processing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "413":
+          description: File exceeds the configured limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileTooLarge"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/avatars/{avatar_id}:
+    parameters:
+      - $ref: "#/components/parameters/AvatarID"
+    get:
+      summary: Download an avatar
+      parameters:
+        - name: size
+          in: query
+          schema:
+            type: string
+            enum: ["100x100", "300x300", original]
+            default: original
+      responses:
+        "200":
+          description: Image bytes.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: public, max-age=86400
+            ETag:
+              schema:
+                type: string
+          content:
+            image/jpeg:
+              schema:
+                $ref: "#/components/schemas/BinaryImage"
+            image/png:
+              schema:
+                $ref: "#/components/schemas/BinaryImage"
+            image/webp:
+              schema:
+                $ref: "#/components/schemas/BinaryImage"
+        "304":
+          description: Cached representation is current.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Requested thumbnail is not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Soft-delete an avatar and queue file removal
+      parameters:
+        - $ref: "#/components/parameters/UserIDHeader"
+      responses:
+        "204":
+          description: Avatar deleted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/avatars/{avatar_id}/metadata:
+    parameters:
+      - $ref: "#/components/parameters/AvatarID"
+    get:
+      summary: Get avatar metadata and available thumbnails
+      responses:
+        "200":
+          description: Avatar metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Metadata"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/users/{user_id}/avatar:
+    parameters:
+      - $ref: "#/components/parameters/UserIDPath"
+    get:
+      summary: Download the latest avatar of a user
+      parameters:
+        - name: size
+          in: query
+          schema:
+            type: string
+            enum: ["100x100", "300x300", original]
+            default: original
+      responses:
+        "200":
+          description: Image bytes.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+            ETag:
+              schema:
+                type: string
+          content:
+            image/jpeg:
+              schema:
+                $ref: "#/components/schemas/BinaryImage"
+            image/png:
+              schema:
+                $ref: "#/components/schemas/BinaryImage"
+            image/webp:
+              schema:
+                $ref: "#/components/schemas/BinaryImage"
+        "304":
+          description: Cached representation is current.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Requested thumbnail is not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Delete the latest avatar of the current user
+      parameters:
+        - $ref: "#/components/parameters/UserIDHeader"
+      responses:
+        "204":
+          description: Avatar deleted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/users/{user_id}/avatars:
+    parameters:
+      - $ref: "#/components/parameters/UserIDPath"
+    get:
+      summary: List user avatars
+      responses:
+        "200":
+          description: Active avatars, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AvatarListItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /health:
+    get:
+      summary: Check application dependencies
+      responses:
+        "200":
+          description: All dependencies are available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: At least one dependency is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /ready:
+    get:
+      summary: Kubernetes readiness probe
+      responses:
+        "200":
+          $ref: "#/components/responses/Healthy"
+        "503":
+          description: Not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /live:
+    get:
+      summary: Kubernetes liveness probe
+      responses:
+        "200":
+          $ref: "#/components/responses/Healthy"
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: Prometheus text exposition format.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /web/upload:
+    get:
+      summary: Avatar upload form
+      responses:
+        "200":
+          description: HTML upload form.
+          content:
+            text/html:
+              schema:
+                type: string
+    post:
+      summary: Upload an avatar from the web form
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [user_id, file]
+              properties:
+                user_id:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "303":
+          description: Redirect to the user gallery.
+        "400":
+          description: Invalid form or image.
+          content:
+            text/html:
+              schema:
+                type: string
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /web/gallery/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/UserIDPath"
+    get:
+      summary: User avatar gallery
+      responses:
+        "200":
+          description: HTML gallery.
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Invalid user ID.
+          content:
+            text/html:
+              schema:
+                type: string
+        "500":
+          description: Internal error.
+          content:
+            text/html:
+              schema:
+                type: string
+components:
+  parameters:
+    UserIDHeader:
+      name: X-User-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+      example: user@example.com
+    AvatarID:
+      name: avatar_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UserIDPath:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+      example: user@example.com
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The avatar belongs to another user.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Avatar not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Healthy:
+      description: Service is healthy.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Health"
+  schemas:
+    BinaryImage:
+      type: string
+      format: binary
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+    FileTooLarge:
+      type: object
+      required: [error, max_size]
+      properties:
+        error:
+          type: string
+          example: File too large
+        max_size:
+          type: integer
+          format: int64
+          example: 10485760
+    UploadResponse:
+      type: object
+      required: [id, user_id, url, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+        url:
+          type: string
+          example: /api/v1/avatars/7d4b0e32-f218-4a58-bf22-e4f2740af3c5
+        status:
+          type: string
+          enum: [processing, pending, completed, failed]
+        created_at:
+          type: string
+          format: date-time
+    Dimensions:
+      type: object
+      required: [width, height]
+      properties:
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+    Thumbnail:
+      type: object
+      required: [size, url]
+      properties:
+        size:
+          type: string
+          enum: ["100x100", "300x300"]
+        url:
+          type: string
+    Metadata:
+      type: object
+      required: [id, user_id, file_name, mime_type, size, dimensions, thumbnails, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+        file_name:
+          type: string
+        mime_type:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+        size:
+          type: integer
+          format: int64
+        dimensions:
+          $ref: "#/components/schemas/Dimensions"
+        thumbnails:
+          type: array
+          items:
+            $ref: "#/components/schemas/Thumbnail"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AvatarListItem:
+      type: object
+      required: [id, user_id, url, status, dimensions, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+        url:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        dimensions:
+          $ref: "#/components/schemas/Dimensions"
+        created_at:
+          type: string
+          format: date-time
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        components:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [ok, error]
+          example:
+            database: ok
+            s3: ok
+            broker: ok

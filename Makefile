@@ -1,4 +1,4 @@
-.PHONY: run test cover lint docker-up docker-down
+.PHONY: run test cover lint docker-up docker-down helm-lint helm-template k8s-render
 
 run:
 	docker compose up --build
@@ -18,3 +18,14 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+helm-lint:
+	helm lint deploy/helm/gophprofile
+	helm lint deploy/helm/gophprofile -f deploy/helm/gophprofile/values-local.yaml
+	helm lint deploy/helm/gophprofile -f deploy/helm/gophprofile/values-production.yaml
+
+helm-template:
+	helm template gophprofile deploy/helm/gophprofile --namespace gophprofile
+
+k8s-render:
+	kubectl kustomize k8s/base
