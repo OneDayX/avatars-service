@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	HTTPAddr          string
+	MetricsAddr       string
 	DatabaseURL       string
 	MigrationsDir     string
 	WebDir            string
@@ -25,11 +26,16 @@ type Config struct {
 	ShutdownTimeout   time.Duration
 	WorkerMaxRetries  int
 	WorkerRetryDelay  time.Duration
+	OTelEnabled       bool
+	OTLPEndpoint      string
+	ServiceName       string
+	Environment       string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:          env("HTTP_ADDR", ":8080"),
+		MetricsAddr:       env("METRICS_ADDR", ":8081"),
 		DatabaseURL:       env("DATABASE_URL", "postgres://gophprofile:gophprofile@localhost:5432/gophprofile?sslmode=disable"),
 		MigrationsDir:     env("MIGRATIONS_DIR", "migrations"),
 		WebDir:            env("WEB_DIR", "web"),
@@ -45,9 +51,15 @@ func Load() (Config, error) {
 		ShutdownTimeout:   10 * time.Second,
 		WorkerMaxRetries:  5,
 		WorkerRetryDelay:  500 * time.Millisecond,
+		OTLPEndpoint:      env("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+		ServiceName:       env("OTEL_SERVICE_NAME", "gophprofile"),
+		Environment:       env("APP_ENV", "development"),
 	}
 	var err error
 	if cfg.S3UseSSL, err = boolEnv("S3_USE_SSL", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.OTelEnabled, err = boolEnv("OTEL_ENABLED", false); err != nil {
 		return Config{}, err
 	}
 	if cfg.MaxFileSize, err = int64Env("MAX_FILE_SIZE", cfg.MaxFileSize); err != nil {

@@ -60,6 +60,23 @@ RabbitMQ использует durable direct exchange `avatars.exchange`, оче
 
 Worker создаёт центрированные миниатюры 100×100 и 300×300, затем обновляет статус и ключи в БД. Повторная обработка завершённого аватара не выполняется. Удаление S3-объектов идемпотентно. Ошибки обрабатываются с экспоненциальным backoff (`WORKER_RETRY_DELAY << attempt`); после исчерпания попыток аватар получает статус `failed`.
 
+## Наблюдаемость
+
+Docker Compose дополнительно запускает Jaeger, Prometheus, Alertmanager, Grafana, Loki и Promtail:
+
+- Grafana: http://localhost:3000 — dashboards **Service Overview** и **Business KPIs and Worker** создаются автоматически;
+- Jaeger: http://localhost:16686 — распределённые трейсы HTTP → service → PostgreSQL/S3 → RabbitMQ → worker;
+- Prometheus: http://localhost:9090 — метрики, правила и состояние scrape targets;
+- Alertmanager: http://localhost:9093 — активные алерты;
+- метрики server: http://localhost:8080/metrics;
+- метрики worker: http://localhost:8081/metrics.
+
+Promtail читает JSON-логи контейнеров `server` и `worker` и отправляет их в Loki. Логи внутри tracing context содержат `trace_id` и `span_id`; datasource Loki в Grafana связывает их с Jaeger. Собираются HTTP RED-метрики, длительность и количество загрузок, общее использование хранилища, события worker, соединения PostgreSQL и глубина RabbitMQ queue.
+
+Alertmanager получает алерты о 5xx rate выше 10%, p95 latency выше 5 секунд, ошибках загрузок и недоступной очереди. По умолчанию используется локальный receiver без внешних уведомлений; его можно расширить в `docker/alertmanager/alertmanager.yml`.
+
+Для запуска приложения вне Docker tracing по умолчанию выключен. Управление: `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `APP_ENV`; адрес метрик worker — `METRICS_ADDR`.
+
 ## Конфигурация
 
 | Переменная | Значение по умолчанию |

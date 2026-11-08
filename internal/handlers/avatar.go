@@ -40,7 +40,7 @@ func NewAvatarHandler(service AvatarService, maxFileSize int64, logger *slog.Log
 func (h *AvatarHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxFileSize+(1<<20))
 	if err := r.ParseMultipartForm(h.maxFileSize); err != nil {
-		h.uploadError(w, err)
+		h.uploadError(r.Context(), w, err)
 		return
 	}
 	file, header, err := r.FormFile("file")
@@ -51,7 +51,7 @@ func (h *AvatarHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, h.maxFileSize+1))
 	if err != nil {
-		h.uploadError(w, err)
+		h.uploadError(r.Context(), w, err)
 		return
 	}
 	if int64(len(data)) > h.maxFileSize {
@@ -60,13 +60,13 @@ func (h *AvatarHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	avatar, err := h.service.Upload(r.Context(), r.Header.Get("X-User-ID"), header.Filename, data)
 	if err != nil {
-		h.uploadError(w, err)
+		h.uploadError(r.Context(), w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, avatar.UploadResponse())
 }
 
-func (h *AvatarHandler) uploadError(w http.ResponseWriter, err error) {
+func (h *AvatarHandler) uploadError(ctx context.Context, w http.ResponseWriter, err error) {
 	var maxBytesError *http.MaxBytesError
 	switch {
 	case errors.As(err, &maxBytesError), errors.Is(err, domain.ErrFileTooLarge):
@@ -76,7 +76,7 @@ func (h *AvatarHandler) uploadError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrInvalidUserID):
 		writeError(w, http.StatusBadRequest, "Invalid User-ID", "X-User-ID must be a non-empty string up to 255 bytes")
 	default:
-		h.internalError(w, err)
+		h.internalError(ctx, w, err)
 	}
 }
 
@@ -88,7 +88,7 @@ func (h *AvatarHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	avatar, object, err := h.service.Get(r.Context(), id, r.URL.Query().Get("size"))
 	if err != nil {
-		h.readError(w, err)
+		h.readError(r.Context(), w, err)
 		return
 	}
 	defer func() { _ = object.Body.Close() }()
@@ -98,14 +98,14 @@ func (h *AvatarHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *AvatarHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 	avatar, object, err := h.service.GetLatest(r.Context(), chi.URLParam(r, "user_id"), r.URL.Query().Get("size"))
 	if err != nil {
-		h.readError(w, err)
+		h.readError(r.Context(), w, err)
 		return
 	}
 	defer func() { _ = object.Body.Close() }()
 	serveImage(w, r, avatar, object)
 }
 
-func (h *AvatarHandler) readError(w http.ResponseWriter, err error) {
+func (h *AvatarHandler) readError(ctx context.Context, w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "Avatar not found", "")
@@ -116,7 +116,7 @@ func (h *AvatarHandler) readError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrInvalidUserID):
 		writeError(w, http.StatusBadRequest, "Invalid User-ID", "User ID must be valid")
 	default:
-		h.internalError(w, err)
+		h.internalError(ctx, w, err)
 	}
 }
 
@@ -145,7 +145,7 @@ func (h *AvatarHandler) Metadata(w http.ResponseWriter, r *http.Request) {
 	}
 	avatar, err := h.service.Metadata(r.Context(), id)
 	if err != nil {
-		h.readError(w, err)
+		h.readError(r.Context(), w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, avatar.MetadataResponse())
@@ -163,7 +163,7 @@ type avatarListItem struct {
 func (h *AvatarHandler) List(w http.ResponseWriter, r *http.Request) {
 	avatars, err := h.service.List(r.Context(), chi.URLParam(r, "user_id"))
 	if err != nil {
-		h.readError(w, err)
+		h.readError(r.Context(), w, err)
 		return
 	}
 	items := make([]avatarListItem, 0, len(avatars))
@@ -183,7 +183,7 @@ func (h *AvatarHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.service.Delete(r.Context(), id, r.Header.Get("X-User-ID")); err != nil {
-		h.deleteError(w, err)
+		h.deleteError(r.Context(), w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -196,13 +196,13 @@ func (h *AvatarHandler) DeleteLatest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.service.DeleteLatest(r.Context(), userID); err != nil {
-		h.deleteError(w, err)
+		h.deleteError(r.Context(), w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *AvatarHandler) deleteError(w http.ResponseWriter, err error) {
+func (h *AvatarHandler) deleteError(ctx context.Context, w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "Avatar not found", "")
@@ -211,12 +211,12 @@ func (h *AvatarHandler) deleteError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrInvalidUserID):
 		writeError(w, http.StatusBadRequest, "Invalid User-ID", "X-User-ID is required")
 	default:
-		h.internalError(w, err)
+		h.internalError(ctx, w, err)
 	}
 }
 
-func (h *AvatarHandler) internalError(w http.ResponseWriter, err error) {
-	h.logger.Error("avatar request failed", "error", err)
+func (h *AvatarHandler) internalError(ctx context.Context, w http.ResponseWriter, err error) {
+	h.logger.ErrorContext(ctx, "avatar request failed", "error", err)
 	writeError(w, http.StatusInternalServerError, "Internal server error", "")
 }
 

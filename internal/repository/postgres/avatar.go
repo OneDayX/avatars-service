@@ -106,6 +106,15 @@ func (r *AvatarRepository) ListByUser(ctx context.Context, userID string) ([]dom
 	return avatars, nil
 }
 
+func (r *AvatarRepository) StorageUsage(ctx context.Context) (int64, error) {
+	var usage int64
+	err := r.pool.QueryRow(ctx, `SELECT COALESCE(SUM(size_bytes), 0) FROM avatars WHERE deleted_at IS NULL`).Scan(&usage)
+	if err != nil {
+		return 0, fmt.Errorf("calculate storage usage: %w", err)
+	}
+	return usage, nil
+}
+
 func (r *AvatarRepository) UpdateProcessingStatus(ctx context.Context, id uuid.UUID, status string, thumbnails map[string]string) error {
 	if thumbnails == nil {
 		thumbnails = map[string]string{}

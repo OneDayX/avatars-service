@@ -28,7 +28,7 @@ func (h *HealthHandler) Check(w http.ResponseWriter, r *http.Request) {
 		"database": h.database.Ping, "s3": h.storage.Ping, "broker": h.broker.Ping,
 	} {
 		if err := check(r.Context()); err != nil {
-			h.logger.Error("health check failed", "component", name, "error", err)
+			h.logger.ErrorContext(r.Context(), "health check failed", "component", name, "error", err)
 			components[name] = "error"
 			healthy = false
 		}

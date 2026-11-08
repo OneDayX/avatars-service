@@ -13,16 +13,20 @@ import (
 	"github.com/example/gophprofile/internal/broker/rabbitmq"
 	"github.com/example/gophprofile/internal/config"
 	"github.com/example/gophprofile/internal/handlers"
+	"github.com/example/gophprofile/internal/observability"
 	postgresrepo "github.com/example/gophprofile/internal/repository/postgres"
 	"github.com/example/gophprofile/internal/services"
+	basestorage "github.com/example/gophprofile/internal/storage"
 	miniostorage "github.com/example/gophprofile/internal/storage/minio"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := observability.NewLogger("gophprofile")
 	if err := run(logger); err != nil {
 		logger.Error("server stopped", "error", err)
 		os.Exit(1)
@@ -36,19 +40,30 @@ func run(logger *slog.Logger) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	shutdownTracing, err := observability.SetupTracing(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		defer cancel()
+		_ = shutdownTracing(shutdownCtx)
+	}()
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
-	if err := postgresrepo.Migrate(ctx, pool, cfg.MigrationsDir); err != nil {
+	db := postgresrepo.NewTracedPool(pool)
+	if err := postgresrepo.Migrate(ctx, db, cfg.MigrationsDir); err != nil {
 		return err
 	}
-	repo := postgresrepo.NewAvatarRepository(pool)
-	storage, err := miniostorage.New(cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3UseSSL)
+	repo := postgresrepo.NewAvatarRepository(db)
+	s3, err := miniostorage.New(cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3UseSSL)
 	if err != nil {
 		return err
 	}
+	storage := basestorage.NewTracedStorage(s3)
 	if err := storage.EnsureBucket(ctx); err != nil {
 		return err
 	}
@@ -57,6 +72,10 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer func() { _ = broker.Close() }()
+	prometheus.MustRegister(
+		observability.NewStorageUsageCollector(repo),
+		observability.NewInfrastructureCollector(pool, broker),
+	)
 	service := services.NewAvatarService(repo, storage, broker, cfg.MaxFileSize)
 	httpLogger := logger.With("component", "http")
 	avatarHandler := handlers.NewAvatarHandler(service, cfg.MaxFileSize, httpLogger)
@@ -67,7 +86,8 @@ func run(logger *slog.Logger) error {
 	}
 	limiter := handlers.NewRateLimiter(cfg.RateLimitRequests, cfg.RateLimitWindow)
 	router := chi.NewRouter()
-	router.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer, middleware.Timeout(30*time.Second), handlers.CORS(cfg.AllowedOrigins))
+	router.Use(observability.HTTPTracing("gophprofile"), observability.HTTPMetrics(httpLogger), middleware.RequestID, middleware.RealIP, middleware.Recoverer, middleware.Timeout(30*time.Second), handlers.CORS(cfg.AllowedOrigins))
+	router.Get("/metrics", promhttp.Handler().ServeHTTP)
 	router.Get("/health", healthHandler.Check)
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/web/upload", http.StatusSeeOther) })
 	router.Route("/api/v1", func(r chi.Router) {

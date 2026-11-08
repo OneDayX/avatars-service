@@ -11,9 +11,14 @@ import (
 	"github.com/example/gophprofile/internal/broker"
 	"github.com/example/gophprofile/internal/domain"
 	"github.com/example/gophprofile/internal/images"
+	"github.com/example/gophprofile/internal/metrics"
 	"github.com/example/gophprofile/internal/repository"
 	"github.com/example/gophprofile/internal/storage"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Worker struct {
@@ -46,23 +51,48 @@ func (w *Worker) Run(ctx context.Context) error {
 			if !ok {
 				return fmt.Errorf("broker delivery channel closed")
 			}
-			err := w.processWithRetry(ctx, delivery.Event)
-			if err == nil {
-				if err := delivery.Ack(); err != nil {
-					return err
-				}
-				continue
-			}
-			w.logger.Error("event processing failed", "type", delivery.Event.Type, "error", err)
-			if errors.Is(ctx.Err(), context.Canceled) {
-				_ = delivery.Reject(true)
-				return nil
-			}
-			if err := delivery.Reject(false); err != nil {
+			if err := w.handleDelivery(ctx, delivery); err != nil {
 				return err
 			}
 		}
 	}
+}
+
+func (w *Worker) handleDelivery(ctx context.Context, delivery broker.Delivery) (err error) {
+	started := time.Now()
+	status := "success"
+	defer func() {
+		metrics.WorkerEvents.WithLabelValues(string(delivery.Event.Type), status).Inc()
+		metrics.WorkerDuration.WithLabelValues(string(delivery.Event.Type), status).Observe(time.Since(started).Seconds())
+	}()
+	deliveryContext := delivery.Context
+	if deliveryContext == nil {
+		deliveryContext = ctx
+	}
+	eventContext, span := otel.Tracer("gophprofile/worker").Start(deliveryContext, "rabbitmq.process "+string(delivery.Event.Type),
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(attribute.String("messaging.operation.type", "process"), attribute.String("messaging.rabbitmq.destination.routing_key", string(delivery.Event.Type))),
+	)
+	defer span.End()
+	err = w.processWithRetry(eventContext, delivery.Event)
+	if err == nil {
+		if err = delivery.Ack(); err != nil {
+			status = "error"
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			return err
+		}
+		return nil
+	}
+	status = "error"
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+	w.logger.ErrorContext(eventContext, "event processing failed", "type", delivery.Event.Type, "error", err)
+	if errors.Is(ctx.Err(), context.Canceled) {
+		_ = delivery.Reject(true)
+		return nil
+	}
+	return delivery.Reject(false)
 }
 
 func (w *Worker) processWithRetry(ctx context.Context, event broker.Event) error {
@@ -74,7 +104,7 @@ func (w *Worker) processWithRetry(ctx context.Context, event broker.Event) error
 		if attempt == w.maxRetries || ctx.Err() != nil {
 			break
 		}
-		w.logger.Warn("retrying event", "type", event.Type, "attempt", attempt+1, "error", err)
+		w.logger.WarnContext(ctx, "retrying event", "type", event.Type, "attempt", attempt+1, "error", err)
 		if sleepErr := w.sleep(ctx, w.retryDelay<<attempt); sleepErr != nil {
 			return sleepErr
 		}
