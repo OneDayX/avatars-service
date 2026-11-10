@@ -34,6 +34,10 @@ func (w *StatusWriter) Write(data []byte) (int, error) {
 func HTTPTracing(serviceName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isOperationalPath(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
 			ctx, span := otel.Tracer(serviceName+"/http").Start(ctx, r.Method+" "+r.URL.Path,
 				trace.WithSpanKind(trace.SpanKindServer),

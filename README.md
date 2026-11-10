@@ -168,13 +168,15 @@ Chart использует `secret.existingSecret=gophprofile-secrets`, поэт
 
 ### Миграции, обновление и удаление
 
-`./migrate` запускается Helm hooks `post-install` и `post-upgrade`. Миграции идемпотентны и защищены PostgreSQL advisory lock. Успешный hook Job удаляется автоматически; при ошибке релиз завершается неуспешно, а Job остаётся для диагностики:
+`./migrate` запускается Helm hooks `post-install` и `post-upgrade`. Бинарник читает только `DATABASE_URL` и `MIGRATIONS_DIR`, поэтому ошибки в настройках S3, rate limit или worker не влияют на hook. Ошибки содержат этап создания пула или применения миграций. Миграции идемпотентны и защищены PostgreSQL advisory lock. Успешный hook Job удаляется автоматически; при ошибке релиз завершается неуспешно, а Job остаётся для диагностики:
 
 ```bash
 kubectl -n gophprofile get jobs
 kubectl -n gophprofile logs job/gophprofile-migration
 helm rollback gophprofile REVISION --namespace gophprofile
 ```
+
+Для rolling update используется expand/contract. Сначала добавляются обратно совместимые таблицы, nullable-колонки или безопасные default: старая и новая версии приложения могут работать с такой схемой одновременно. Удаление, переименование и другие несовместимые изменения выполняются только отдельной contract-миграцией после полного вывода старой версии из эксплуатации.
 
 Удаление приложения не удаляет внешние PostgreSQL, S3 и RabbitMQ:
 

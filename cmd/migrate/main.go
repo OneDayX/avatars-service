@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,16 +22,16 @@ func main() {
 }
 
 func run() error {
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
+	cfg := config.LoadMigration()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("create PostgreSQL connection pool: %w", err)
 	}
 	defer pool.Close()
-	return postgresrepo.Migrate(ctx, postgresrepo.NewTracedPool(pool), cfg.MigrationsDir)
+	if err := postgresrepo.Migrate(ctx, postgresrepo.NewTracedPool(pool), cfg.MigrationsDir); err != nil {
+		return fmt.Errorf("apply migrations from %s: %w", cfg.MigrationsDir, err)
+	}
+	return nil
 }

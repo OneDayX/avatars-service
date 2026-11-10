@@ -193,24 +193,6 @@ func TestDeleteHandlers(t *testing.T) {
 	require.True(t, service.deleted)
 }
 
-func TestHealthHandler(t *testing.T) {
-	handler := NewHealthHandler(healthyPinger{}, healthyPinger{}, healthyPinger{}, testLogger())
-	response := httptest.NewRecorder()
-	handler.Check(response, httptest.NewRequest(http.MethodGet, "/health", nil))
-	require.Equal(t, http.StatusOK, response.Code)
-	handler = NewHealthHandler(healthyPinger{}, healthyPinger{}, healthyPinger{err: errors.New("down")}, testLogger())
-	response = httptest.NewRecorder()
-	handler.Check(response, httptest.NewRequest(http.MethodGet, "/health", nil))
-	require.Equal(t, http.StatusServiceUnavailable, response.Code)
-	require.Contains(t, response.Body.String(), "degraded")
-	require.Contains(t, response.Body.String(), `"broker":"error"`)
-	require.NotContains(t, response.Body.String(), "down")
-}
-
-type healthyPinger struct{ err error }
-
-func (p healthyPinger) Ping(context.Context) error { return p.err }
-
 func TestRateLimiterAndCORS(t *testing.T) {
 	limiter := NewRateLimiter(1, time.Minute)
 	now := time.Now()

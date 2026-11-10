@@ -35,6 +35,23 @@ func TestHTTPTracing(t *testing.T) {
 	require.Equal(t, int(http.StatusCreated), intAttribute(spans[0].Attributes(), "http.response.status_code"))
 }
 
+func TestHTTPTracingSkipsOperationalEndpoints(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { otel.SetTracerProvider(previous) })
+	for _, path := range []string{"/live", "/ready", "/health", "/metrics"} {
+		router := chi.NewRouter()
+		router.Use(HTTPTracing("test"))
+		router.Get(path, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusOK, response.Code)
+	}
+	require.Empty(t, recorder.Ended())
+}
+
 func intAttribute(attributes []attribute.KeyValue, key attribute.Key) int {
 	for _, item := range attributes {
 		if item.Key == key {

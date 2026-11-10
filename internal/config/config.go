@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+type MigrationConfig struct {
+	DatabaseURL   string
+	MigrationsDir string
+}
+
 type Config struct {
 	HTTPAddr          string
 	MetricsAddr       string
@@ -31,6 +36,13 @@ type Config struct {
 	OTLPEndpoint      string
 	ServiceName       string
 	Environment       string
+}
+
+func LoadMigration() MigrationConfig {
+	return MigrationConfig{
+		DatabaseURL:   env("DATABASE_URL", "postgres://gophprofile:gophprofile@localhost:5432/gophprofile?sslmode=disable"),
+		MigrationsDir: env("MIGRATIONS_DIR", "migrations"),
+	}
 }
 
 func Load() (Config, error) {

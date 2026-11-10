@@ -90,8 +90,8 @@ func run(logger *slog.Logger) error {
 	router := chi.NewRouter()
 	router.Use(observability.HTTPTracing("gophprofile"), observability.HTTPMetrics(httpLogger), middleware.RequestID, middleware.RealIP, middleware.Recoverer, middleware.Timeout(30*time.Second), handlers.CORS(cfg.AllowedOrigins))
 	router.Get("/metrics", promhttp.Handler().ServeHTTP)
-	router.Get("/health", healthHandler.Check)
-	router.Get("/ready", healthHandler.Check)
+	router.Get("/health", healthHandler.Ready)
+	router.Get("/ready", healthHandler.Ready)
 	router.Get("/live", healthHandler.Live)
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/web/upload", http.StatusSeeOther) })
 	router.Route("/api/v1", func(r chi.Router) {

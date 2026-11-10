@@ -38,6 +38,17 @@ func TestLoadOverrides(t *testing.T) {
 	require.False(t, cfg.RunMigrations)
 }
 
+func TestLoadMigrationIgnoresApplicationConfig(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://migration-db/avatars")
+	t.Setenv("MIGRATIONS_DIR", "db/migrations")
+	t.Setenv("MAX_FILE_SIZE", "invalid")
+	t.Setenv("S3_USE_SSL", "invalid")
+	t.Setenv("RATE_LIMIT_WINDOW", "invalid")
+	cfg := LoadMigration()
+	require.Equal(t, "postgres://migration-db/avatars", cfg.DatabaseURL)
+	require.Equal(t, "db/migrations", cfg.MigrationsDir)
+}
+
 func TestLoadRejectsInvalidValues(t *testing.T) {
 	for _, test := range []struct{ key, value string }{{"S3_USE_SSL", "maybe"}, {"MAX_FILE_SIZE", "large"}, {"RATE_LIMIT_WINDOW", "soon"}, {"MAX_FILE_SIZE", "0"}} {
 		t.Run(test.key+test.value, func(t *testing.T) {
