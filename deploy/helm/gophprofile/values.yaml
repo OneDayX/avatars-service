@@ -1,0 +1,138 @@
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: avatars-service
+  tag: latest
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+secret:
+  create: true
+  existingSecret: ""
+  databaseUrl: "postgres://gophprofile:gophprofile@postgresql:5432/gophprofile?sslmode=disable"
+  s3AccessKey: minioadmin
+  s3SecretKey: minioadmin
+  rabbitmqUrl: "amqp://guest:guest@rabbitmq:5672/"
+
+config:
+  environment: production
+  runMigrations: false
+  s3Endpoint: minio:9000
+  s3Bucket: avatars
+  s3UseSSL: false
+  maxFileSize: "10485760"
+  rateLimitRequests: "60"
+  rateLimitWindow: 1m
+  corsAllowedOrigins: "*"
+  shutdownTimeout: 20s
+  workerMaxRetries: "5"
+  workerRetryDelay: 500ms
+  otelEnabled: false
+  otlpEndpoint: jaeger:4317
+
+server:
+  replicaCount: 2
+  terminationGracePeriodSeconds: 30
+  preStopDelaySeconds: 5
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+worker:
+  replicaCount: 1
+  terminationGracePeriodSeconds: 30
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+migration:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+service:
+  type: ClusterIP
+  serverPort: 80
+  serverMetricsPort: 8080
+  workerMetricsPort: 8081
+
+ingress:
+  enabled: true
+  className: nginx
+  host: avatars.local
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+  tls: []
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  scaleDownStabilizationWindowSeconds: 300
+
+metrics:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    additionalLabels: {}
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+  ingressNamespaces: ["ingress-nginx"]
+  monitoringNamespaces: ["monitoring"]
+  egressCidr: 0.0.0.0/0
+  egressPorts:
+    - port: 5432
+      protocol: TCP
+    - port: 5672
+      protocol: TCP
+    - port: 9000
+      protocol: TCP
+    - port: 4317
+      protocol: TCP
+  extraEgress: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

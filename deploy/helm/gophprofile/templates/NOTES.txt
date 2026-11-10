@@ -1,0 +1,15 @@
+GophProfile {{ .Chart.AppVersion }} is being deployed.
+
+{{- if .Values.ingress.enabled }}
+Add {{ .Values.ingress.host }} to your DNS or /etc/hosts and open:
+  http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}/web/upload
+{{- else }}
+Port-forward the HTTP service:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "gophprofile.fullname" . }}-server 8080:{{ .Values.service.serverPort }}
+{{- end }}
+
+Migration hook status:
+  kubectl -n {{ .Release.Namespace }} get jobs -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Server pods:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=server

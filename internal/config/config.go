@@ -7,11 +7,17 @@ import (
 	"time"
 )
 
+type MigrationConfig struct {
+	DatabaseURL   string
+	MigrationsDir string
+}
+
 type Config struct {
 	HTTPAddr          string
 	MetricsAddr       string
 	DatabaseURL       string
 	MigrationsDir     string
+	RunMigrations     bool
 	WebDir            string
 	S3Endpoint        string
 	S3AccessKey       string
@@ -30,6 +36,13 @@ type Config struct {
 	OTLPEndpoint      string
 	ServiceName       string
 	Environment       string
+}
+
+func LoadMigration() MigrationConfig {
+	return MigrationConfig{
+		DatabaseURL:   env("DATABASE_URL", "postgres://gophprofile:gophprofile@localhost:5432/gophprofile?sslmode=disable"),
+		MigrationsDir: env("MIGRATIONS_DIR", "migrations"),
+	}
 }
 
 func Load() (Config, error) {
@@ -60,6 +73,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.OTelEnabled, err = boolEnv("OTEL_ENABLED", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.RunMigrations, err = boolEnv("RUN_MIGRATIONS", true); err != nil {
 		return Config{}, err
 	}
 	if cfg.MaxFileSize, err = int64Env("MAX_FILE_SIZE", cfg.MaxFileSize); err != nil {

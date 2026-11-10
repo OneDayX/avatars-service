@@ -55,8 +55,10 @@ func run(logger *slog.Logger) error {
 	}
 	defer pool.Close()
 	db := postgresrepo.NewTracedPool(pool)
-	if err := postgresrepo.Migrate(ctx, db, cfg.MigrationsDir); err != nil {
-		return err
+	if cfg.RunMigrations {
+		if err := postgresrepo.Migrate(ctx, db, cfg.MigrationsDir); err != nil {
+			return err
+		}
 	}
 	repo := postgresrepo.NewAvatarRepository(db)
 	s3, err := miniostorage.New(cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3UseSSL)
@@ -88,7 +90,9 @@ func run(logger *slog.Logger) error {
 	router := chi.NewRouter()
 	router.Use(observability.HTTPTracing("gophprofile"), observability.HTTPMetrics(httpLogger), middleware.RequestID, middleware.RealIP, middleware.Recoverer, middleware.Timeout(30*time.Second), handlers.CORS(cfg.AllowedOrigins))
 	router.Get("/metrics", promhttp.Handler().ServeHTTP)
-	router.Get("/health", healthHandler.Check)
+	router.Get("/health", healthHandler.Ready)
+	router.Get("/ready", healthHandler.Ready)
+	router.Get("/live", healthHandler.Live)
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/web/upload", http.StatusSeeOther) })
 	router.Route("/api/v1", func(r chi.Router) {
 		r.Use(limiter.Middleware)

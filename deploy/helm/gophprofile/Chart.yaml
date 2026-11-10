@@ -1,0 +1,7 @@
+apiVersion: v2
+name: gophprofile
+description: Avatar upload, processing and delivery service
+type: application
+version: 0.3.0
+appVersion: "latest"
+keywords: ["avatars", "golang", "kubernetes"]

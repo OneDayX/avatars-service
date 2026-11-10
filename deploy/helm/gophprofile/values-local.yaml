@@ -1,0 +1,11 @@
+image:
+  repository: avatars-service
+  tag: latest
+  pullPolicy: IfNotPresent
+ingress:
+  host: avatars.local
+metrics:
+  serviceMonitor:
+    enabled: false
+networkPolicy:
+  enabled: false

@@ -32,6 +32,28 @@ func TestHTTPMetrics(t *testing.T) {
 	require.True(t, found)
 }
 
+func TestHTTPMetricsSkipsOperationalEndpoints(t *testing.T) {
+	for _, path := range []string{"/live", "/ready", "/health", "/metrics"} {
+		t.Run(path, func(t *testing.T) {
+			router := chi.NewRouter()
+			router.Use(HTTPMetrics(slog.New(slog.NewTextHandler(testDiscard{}, nil))))
+			router.Get(path, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			require.Equal(t, http.StatusOK, response.Code)
+			families, err := prometheus.DefaultGatherer.Gather()
+			require.NoError(t, err)
+			for _, family := range families {
+				for _, metric := range family.Metric {
+					for _, label := range metric.Label {
+						require.NotEqual(t, path, label.GetValue())
+					}
+				}
+			}
+		})
+	}
+}
+
 type testDiscard struct{}
 
 func (testDiscard) Write(data []byte) (int, error) { return len(data), nil }

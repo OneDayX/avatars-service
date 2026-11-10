@@ -21,7 +21,11 @@ func NewHealthHandler(database, storage, broker Pinger, logger *slog.Logger) *He
 	return &HealthHandler{database: database, storage: storage, broker: broker, logger: logger}
 }
 
-func (h *HealthHandler) Check(w http.ResponseWriter, r *http.Request) {
+func (h *HealthHandler) Live(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
 	components := map[string]string{"database": "ok", "s3": "ok", "broker": "ok"}
 	healthy := true
 	for name, check := range map[string]func(context.Context) error{
